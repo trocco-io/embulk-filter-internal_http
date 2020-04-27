@@ -1,6 +1,5 @@
 # Internal Http filter plugin for Embulk
-
-TODO: Write short description here and build.gradle file.
+Embulk filter plugin used for internal purposes.
 
 ## Overview
 
