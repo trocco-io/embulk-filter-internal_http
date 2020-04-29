@@ -13,7 +13,7 @@ configurations {
     provided
 }
 
-version = "0.1.0"
+version = "0.1.1"
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
@@ -62,7 +62,7 @@ task gem(type: JRubyExec, dependsOn: ["gemspec", "classpath"]) {
 task gemPush(type: JRubyExec, dependsOn: ["gem"]) {
     jrubyArgs "-S"
     script "gem"
-    scriptArgs "push", "pkg/${project.name}-${project.version}.gem"
+    scriptArgs "push", "--key", "github", "--host", "https://rubygems.pkg.github.com/trocco-io", "${project.name}-${project.version}.gem"
 }
 
 task "package"(dependsOn: ["gemspec", "classpath"]) {
@@ -85,6 +85,7 @@ Gem::Specification.new do |spec|
   spec.description   = %[Internal Http]
   spec.email         = ["n.nakane0219@gmail.com"]
   spec.licenses      = ["MIT"]
+  spec.homepage      = "https://github.com/trocco-io/embulk-filter-internal_http"
   # TODO set this: spec.homepage      = "https://github.com/n.nakane0219/embulk-filter-internal_http"
 
   spec.files         = `git ls-files`.split("\n") + Dir["classpath/*.jar"]
