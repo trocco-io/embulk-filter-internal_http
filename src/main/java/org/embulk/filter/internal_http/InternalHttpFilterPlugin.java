@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import com.google.common.collect.ImmutableList;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
@@ -12,10 +13,7 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
-import org.embulk.config.Config;
-import org.embulk.config.ConfigSource;
-import org.embulk.config.Task;
-import org.embulk.config.TaskSource;
+import org.embulk.config.*;
 import org.embulk.exec.ExecutionInterruptedException;
 import org.embulk.spi.*;
 import org.embulk.spi.json.JsonParser;
@@ -27,17 +25,32 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.List;
 
 public class InternalHttpFilterPlugin
         implements FilterPlugin
 {
     private static final Logger logger = LoggerFactory.getLogger(InternalHttpFilterPlugin.class);
 
+    // NOTE: This is not spi.ColumnConfig
+    interface ColumnConfig extends Task
+    {
+        @Config("name")
+        public String getName();
+
+        @Config("type")
+        public Type getType();
+    }
+
     public interface PluginTask
             extends Task
     {
         @Config("url")
         public String getUrl();
+
+        @Config("columns")
+        @ConfigDefault("[]")
+        public List<ColumnConfig> getColumns();
     }
 
     @Override
@@ -46,9 +59,25 @@ public class InternalHttpFilterPlugin
     {
         PluginTask task = config.loadConfig(PluginTask.class);
 
-        Schema outputSchema = inputSchema;
+        Schema outputSchema = buildOutputSchema(task, inputSchema);
 
         control.run(task.dump(), outputSchema);
+    }
+
+    private static Schema buildOutputSchema(PluginTask task, Schema inputSchema)
+    {
+        if (task.getColumns().isEmpty()) {
+            return inputSchema;
+        }
+
+        List<ColumnConfig> columns = task.getColumns();
+        ImmutableList.Builder<Column> builder = ImmutableList.builder();
+        int i = 0;
+        for (ColumnConfig column : columns) {
+            Column outputColumn = new Column(i++, column.getName(), column.getType());
+            builder.add(outputColumn);
+        }
+        return new Schema(builder.build());
     }
 
     @Override
@@ -116,14 +145,13 @@ public class InternalHttpFilterPlugin
                         StringEntity entity = new StringEntity(requestBody, "UTF-8");
                         httpPost.setEntity(entity);
                         try (CloseableHttpResponse httpResponse = httpClient.execute(httpPost)) {
-                            logger.info(Integer.toString(httpResponse.getStatusLine().getStatusCode()));
                             if (httpResponse.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
                                 String responseBody = EntityUtils.toString(httpResponse.getEntity());
                                 JsonNode responseRootNode = mapper.readTree(responseBody);
                                 Iterator<JsonNode> responseRootIterator = responseRootNode.get("pages").elements();
                                 while (responseRootIterator.hasNext()) {
                                     JsonNode responsePageNode = responseRootIterator.next();
-                                    for (Column column : inputSchema.getColumns()) {
+                                    for (Column column : outputSchema.getColumns()) {
                                         String name = column.getName();
                                         JsonNode val = responsePageNode.get(name);
                                         Type type = column.getType();
@@ -151,6 +179,8 @@ public class InternalHttpFilterPlugin
                             }
                             else {
                                 logger.error("Internal API Error");
+                                String responseBody = EntityUtils.toString(httpResponse.getEntity());
+                                logger.error(responseBody);
                                 throw new ExecutionInterruptedException(new Exception("Internal API Error"));
                             }
                         }
