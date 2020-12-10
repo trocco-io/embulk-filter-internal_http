@@ -62,7 +62,7 @@ task gem(type: JRubyExec, dependsOn: ["gemspec", "classpath"]) {
 task gemPush(type: JRubyExec, dependsOn: ["gem"]) {
     jrubyArgs "-S"
     script "gem"
-    scriptArgs "push", "--key", "github", "--host", "https://rubygems.pkg.github.com/trocco-io", "${project.name}-${project.version}.gem"
+    scriptArgs "push", "--key", "github", "--host", "https://rubygems.pkg.github.com/trocco-io", "pkg/${project.name}-${project.version}.gem"
 }
 
 task "package"(dependsOn: ["gemspec", "classpath"]) {
