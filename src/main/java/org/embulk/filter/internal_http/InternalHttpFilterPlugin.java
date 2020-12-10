@@ -17,20 +17,23 @@ import org.embulk.config.*;
 import org.embulk.exec.ExecutionInterruptedException;
 import org.embulk.spi.*;
 import org.embulk.spi.json.JsonParser;
-import org.embulk.spi.time.Timestamp;
+import org.embulk.spi.time.TimestampParser;
 import org.embulk.spi.type.Type;
 import org.embulk.spi.type.Types;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 
 public class InternalHttpFilterPlugin
         implements FilterPlugin
 {
     private static final Logger logger = LoggerFactory.getLogger(InternalHttpFilterPlugin.class);
+    private static HashMap<String, TimestampParser> timestampParserMap = new HashMap<>();
 
     // NOTE: This is not spi.ColumnConfig
     interface ColumnConfig extends Task
@@ -40,6 +43,10 @@ public class InternalHttpFilterPlugin
 
         @Config("type")
         public Type getType();
+
+        @Config("format")
+        @ConfigDefault("null")
+        public Optional<String> getFormat();
     }
 
     public interface PluginTask
@@ -76,6 +83,9 @@ public class InternalHttpFilterPlugin
         for (ColumnConfig column : columns) {
             Column outputColumn = new Column(i++, column.getName(), column.getType());
             builder.add(outputColumn);
+            if (column.getType().getName().equals("timestamp")) {
+                timestampParserMap.put(column.getName(), TimestampParser.of(column.getFormat().orElse("%Y-%m-%d %H:%M:%S %z"), "UTC"));
+            }
         }
         return new Schema(builder.build());
     }
@@ -128,7 +138,7 @@ public class InternalHttpFilterPlugin
                             requestPageNode.put(column.getName(), pageReader.getBoolean(column));
                         }
                         else if (Types.TIMESTAMP.equals(type)) {
-                            requestPageNode.put(column.getName(), pageReader.getTimestamp(column).getEpochSecond());
+                            requestPageNode.put(column.getName(), pageReader.getTimestamp(column).toString().replace("UTC", "+0000"));
                         }
                         else if (Types.JSON.equals(type)) {
                             requestPageNode.put(column.getName(), pageReader.getJson(column).toString());
@@ -168,7 +178,7 @@ public class InternalHttpFilterPlugin
                                             pageBuilder.setBoolean(column, val.asBoolean());
                                         }
                                         else if (Types.TIMESTAMP.equals(type)) {
-                                            pageBuilder.setTimestamp(column, Timestamp.ofEpochSecond(val.asLong()));
+                                            pageBuilder.setTimestamp(column, timestampParserMap.get(column.getName()).parse(val.asText()));
                                         }
                                         else if (Types.JSON.equals(type)) {
                                             pageBuilder.setJson(column, new JsonParser().parse(val.asText()));
