@@ -146,7 +146,7 @@ public class InternalHttpFilterPlugin
                     }
                     requestPagesNode.add(requestPageNode);
                 }
-                requestRootNode.set("pages", requestPagesNode);
+                requestRootNode.set("rows", requestPagesNode);
 
                 try {
                     String requestBody = mapper.writeValueAsString(requestRootNode);
@@ -158,7 +158,7 @@ public class InternalHttpFilterPlugin
                             if (httpResponse.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
                                 String responseBody = EntityUtils.toString(httpResponse.getEntity());
                                 JsonNode responseRootNode = mapper.readTree(responseBody);
-                                Iterator<JsonNode> responseRootIterator = responseRootNode.get("pages").elements();
+                                Iterator<JsonNode> responseRootIterator = responseRootNode.get("rows").elements();
                                 while (responseRootIterator.hasNext()) {
                                     JsonNode responsePageNode = responseRootIterator.next();
                                     for (Column column : outputSchema.getColumns()) {
