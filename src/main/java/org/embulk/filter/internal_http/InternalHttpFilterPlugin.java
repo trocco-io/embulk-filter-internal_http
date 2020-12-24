@@ -53,11 +53,16 @@ public class InternalHttpFilterPlugin
             extends Task
     {
         @Config("url")
+        @ConfigDefault("")
         public String getUrl();
 
         @Config("columns")
         @ConfigDefault("[]")
         public List<ColumnConfig> getColumns();
+
+        @Config("sample_data_mode")
+        @ConfigDefault("false")
+        public boolean getSampleDataMode();
     }
 
     @Override
@@ -66,7 +71,7 @@ public class InternalHttpFilterPlugin
     {
         PluginTask task = config.loadConfig(PluginTask.class);
 
-        Schema outputSchema = buildOutputSchema(task, inputSchema);
+        Schema outputSchema = task.getSampleDataMode() ? buildSampleDataOutputSchema() : buildOutputSchema(task, inputSchema);
 
         control.run(task.dump(), outputSchema);
     }
@@ -87,6 +92,14 @@ public class InternalHttpFilterPlugin
                 timestampParserMap.put(column.getName(), TimestampParser.of(column.getFormat().orElse("%Y-%m-%d %H:%M:%S %z"), "UTC"));
             }
         }
+        return new Schema(builder.build());
+    }
+
+    private static Schema buildSampleDataOutputSchema()
+    {
+        ImmutableList.Builder<Column> builder = ImmutableList.builder();
+        builder.add(new Column(0, "data", Types.JSON));
+        builder.add(new Column(1, "schema", Types.JSON));
         return new Schema(builder.build());
     }
 
@@ -119,6 +132,16 @@ public class InternalHttpFilterPlugin
 
                 ObjectMapper mapper = new ObjectMapper();
 
+                ArrayNode schemaNode = mapper.createArrayNode();
+                if (task.getSampleDataMode()) {
+                    for (Column column : inputSchema.getColumns()) {
+                        ArrayNode eachSchemaNode = mapper.createArrayNode();
+                        eachSchemaNode.add(column.getName());
+                        eachSchemaNode.add(column.getType().getName());
+                        schemaNode.add(eachSchemaNode);
+                    }
+                }
+
                 ObjectNode requestRootNode = mapper.createObjectNode();
                 ArrayNode requestPagesNode = mapper.createArrayNode();
                 while (pageReader.nextRecord()) {
@@ -144,9 +167,24 @@ public class InternalHttpFilterPlugin
                             requestPageNode.put(column.getName(), pageReader.getJson(column).toString());
                         }
                     }
+                    if (task.getSampleDataMode()) {
+                        try {
+                            pageBuilder.setJson(new Column(0, "row", Types.JSON), new JsonParser().parse(mapper.writeValueAsString(requestPageNode)));
+                            pageBuilder.setJson(new Column(1, "schema", Types.JSON), new JsonParser().parse(mapper.writeValueAsString(schemaNode)));
+                            pageBuilder.addRecord();
+                        }
+                        catch (IOException e) {
+                            logger.error(e.getMessage(), e);
+                            throw new ExecutionInterruptedException(e);
+                        }
+                    }
                     requestPagesNode.add(requestPageNode);
                 }
                 requestRootNode.set("rows", requestPagesNode);
+
+                if (task.getSampleDataMode()) {
+                    return;
+                }
 
                 try {
                     String requestBody = mapper.writeValueAsString(requestRootNode);
