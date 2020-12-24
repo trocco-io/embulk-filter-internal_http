@@ -147,6 +147,10 @@ public class InternalHttpFilterPlugin
                 while (pageReader.nextRecord()) {
                     ObjectNode requestPageNode = mapper.createObjectNode();
                     for (Column column : inputSchema.getColumns()) {
+                        if (pageReader.isNull(column)) {
+                            requestPageNode.putNull(column.getName());
+                            continue;
+                        }
                         Type type = column.getType();
                         if (Types.STRING.equals(type)) {
                             requestPageNode.put(column.getName(), pageReader.getString(column));
