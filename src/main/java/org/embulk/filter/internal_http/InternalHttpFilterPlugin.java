@@ -203,9 +203,16 @@ public class InternalHttpFilterPlugin
                                 Iterator<JsonNode> responseRootIterator = responseRootNode.get("rows").elements();
                                 while (responseRootIterator.hasNext()) {
                                     JsonNode responsePageNode = responseRootIterator.next();
+                                    if (responsePageNode.isNull()) {
+                                        continue;
+                                    }
                                     for (Column column : outputSchema.getColumns()) {
                                         String name = column.getName();
                                         JsonNode val = responsePageNode.get(name);
+                                        if (val.isNull()) {
+                                            pageBuilder.setNull(column);
+                                            continue;
+                                        }
                                         Type type = column.getType();
                                         if (Types.STRING.equals(type)) {
                                             pageBuilder.setString(column, val.asText());
