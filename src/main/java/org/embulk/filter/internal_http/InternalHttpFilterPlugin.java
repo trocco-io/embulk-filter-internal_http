@@ -168,12 +168,17 @@ public class InternalHttpFilterPlugin
                             requestPageNode.put(column.getName(), pageReader.getTimestamp(column).toString().replace("UTC", "+0000"));
                         }
                         else if (Types.JSON.equals(type)) {
-                            requestPageNode.put(column.getName(), pageReader.getJson(column).toString());
+                            try {
+                                requestPageNode.set(column.getName(), mapper.readTree(pageReader.getJson(column).toString()));
+                            } catch (IOException e) {
+                                logger.error(e.getMessage(), e);
+                                throw new ExecutionInterruptedException(e);
+                            }
                         }
                     }
                     if (task.getSampleDataMode()) {
                         try {
-                            pageBuilder.setJson(new Column(0, "row", Types.JSON), new JsonParser().parse(mapper.writeValueAsString(requestPageNode)));
+                            pageBuilder.setJson(new Column(0, "data", Types.JSON), new JsonParser().parse(mapper.writeValueAsString(requestPageNode)));
                             pageBuilder.setJson(new Column(1, "schema", Types.JSON), new JsonParser().parse(mapper.writeValueAsString(schemaNode)));
                             pageBuilder.addRecord();
                         }
@@ -230,7 +235,7 @@ public class InternalHttpFilterPlugin
                                             pageBuilder.setTimestamp(column, timestampParserMap.get(column.getName()).parse(val.asText()));
                                         }
                                         else if (Types.JSON.equals(type)) {
-                                            pageBuilder.setJson(column, new JsonParser().parse(val.asText()));
+                                            pageBuilder.setJson(column, new JsonParser().parse(val.toString()));
                                         }
                                     }
                                     pageBuilder.addRecord();
