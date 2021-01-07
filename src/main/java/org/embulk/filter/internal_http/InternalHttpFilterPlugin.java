@@ -24,6 +24,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -165,7 +167,8 @@ public class InternalHttpFilterPlugin
                             requestPageNode.put(column.getName(), pageReader.getBoolean(column));
                         }
                         else if (Types.TIMESTAMP.equals(type)) {
-                            requestPageNode.put(column.getName(), pageReader.getTimestamp(column).toString().replace("UTC", "+0000"));
+                            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss xxxx").withZone(ZoneOffset.UTC);
+                            requestPageNode.put(column.getName(), formatter.format(pageReader.getTimestamp(column).getInstant()));
                         }
                         else if (Types.JSON.equals(type)) {
                             try {
