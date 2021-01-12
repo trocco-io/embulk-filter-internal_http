@@ -22,5 +22,14 @@ jobs:
         java-version: 1.8
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
-    - name: Build with Gradle
+    - name: Test with Gradle
       run: ./gradlew test --stacktrace --info
+    - name: Publish to RubyGems
+      run: |
+        mkdir -p $HOME/.gem
+        touch $HOME/.gem/credentials
+        chmod 0600 $HOME/.gem/credentials
+        printf -- "---\n:rubygems_api_key: ${GEM_HOST_API_KEY}\n" > $HOME/.gem/credentials
+        ./gradlew gemPush
+      env:
+        GEM_HOST_API_KEY: ${{secrets.GITHUB_TOKEN}}
