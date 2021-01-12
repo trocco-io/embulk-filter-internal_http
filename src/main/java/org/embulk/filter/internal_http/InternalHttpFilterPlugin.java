@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import com.google.common.collect.ImmutableList;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -29,17 +28,20 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Optional;
 
-public class InternalHttpFilterPlugin
-        implements FilterPlugin
-{
+public class InternalHttpFilterPlugin implements FilterPlugin {
     private static final Logger logger = LoggerFactory.getLogger(InternalHttpFilterPlugin.class);
+
+    private static final String defaultJavaTimestampFormat = "yyyy-MM-dd HH:mm:ss xxxx";
+    private static final String defaultRubyTimestampFormat = "%Y-%m-%d %H:%M:%S %z";
+    private static final String sampleDataModeColumnName0 = "data";
+    private static final String sampleDataModeColumnName1 = "schema";
+    private static final String requestJsonRootAttributeName = "rows";
+
     private static HashMap<String, TimestampParser> timestampParserMap = new HashMap<>();
 
     // NOTE: This is not spi.ColumnConfig
-    interface ColumnConfig extends Task
-    {
+    public interface ColumnConfig extends Task {
         @Config("name")
         public String getName();
 
@@ -47,15 +49,13 @@ public class InternalHttpFilterPlugin
         public Type getType();
 
         @Config("format")
-        @ConfigDefault("null")
-        public Optional<String> getFormat();
+        @ConfigDefault("\"" + defaultRubyTimestampFormat + "\"")
+        public String getFormat();
     }
 
-    public interface PluginTask
-            extends Task
-    {
+    public interface PluginTask extends Task {
         @Config("url")
-        @ConfigDefault("")
+        @ConfigDefault("\"\"")
         public String getUrl();
 
         @Config("columns")
@@ -68,47 +68,55 @@ public class InternalHttpFilterPlugin
     }
 
     @Override
-    public void transaction(ConfigSource config, Schema inputSchema,
-            FilterPlugin.Control control)
-    {
+    public void transaction(ConfigSource config, Schema inputSchema, FilterPlugin.Control control) {
         PluginTask task = config.loadConfig(PluginTask.class);
 
-        Schema outputSchema = task.getSampleDataMode() ? buildSampleDataOutputSchema() : buildOutputSchema(task, inputSchema);
+        validateConfig(task);
+        Schema outputSchema = task.getSampleDataMode() ? buildSampleDataOutputSchema() : buildDefaultOutputSchema(task);
+        initTimestampParserMap(task);
 
         control.run(task.dump(), outputSchema);
     }
 
-    private static Schema buildOutputSchema(PluginTask task, Schema inputSchema)
-    {
-        if (task.getColumns().isEmpty()) {
-            return inputSchema;
+    private void validateConfig(PluginTask task) {
+        if (!task.getSampleDataMode()) {
+            if (task.getUrl().isEmpty()) {
+                throw new ConfigException("'url' is required, but not set.");
+            }
+            if (task.getColumns().isEmpty()) {
+                throw new ConfigException("'columns' is required, but not set.");
+            }
         }
+    }
 
+    private Schema buildDefaultOutputSchema(PluginTask task) {
         List<ColumnConfig> columns = task.getColumns();
         ImmutableList.Builder<Column> builder = ImmutableList.builder();
         int i = 0;
         for (ColumnConfig column : columns) {
-            Column outputColumn = new Column(i++, column.getName(), column.getType());
-            builder.add(outputColumn);
-            if (column.getType().getName().equals("timestamp")) {
-                timestampParserMap.put(column.getName(), TimestampParser.of(column.getFormat().orElse("%Y-%m-%d %H:%M:%S %z"), "UTC"));
-            }
+            builder.add(new Column(i++, column.getName(), column.getType()));
         }
         return new Schema(builder.build());
     }
 
-    private static Schema buildSampleDataOutputSchema()
-    {
+    private Schema buildSampleDataOutputSchema() {
         ImmutableList.Builder<Column> builder = ImmutableList.builder();
-        builder.add(new Column(0, "data", Types.JSON));
-        builder.add(new Column(1, "schema", Types.JSON));
+        builder.add(new Column(0, sampleDataModeColumnName0, Types.JSON));
+        builder.add(new Column(1, sampleDataModeColumnName1, Types.JSON));
         return new Schema(builder.build());
     }
 
+    private void initTimestampParserMap(PluginTask task) {
+        List<ColumnConfig> columns = task.getColumns();
+        for (ColumnConfig column : columns) {
+            if (column.getType().getName().equals("timestamp")) {
+                timestampParserMap.put(column.getName(), TimestampParser.of(column.getFormat(), "UTC"));
+            }
+        }
+    }
+
     @Override
-    public PageOutput open(TaskSource taskSource, Schema inputSchema,
-            Schema outputSchema, PageOutput output)
-    {
+    public PageOutput open(TaskSource taskSource, Schema inputSchema, Schema outputSchema, PageOutput output) {
         PluginTask task = taskSource.loadTask(PluginTask.class);
 
         return new PageOutput() {
@@ -116,32 +124,24 @@ public class InternalHttpFilterPlugin
             private PageBuilder pageBuilder = new PageBuilder(Exec.getBufferAllocator(), outputSchema, output);
 
             @Override
-            public void finish()
-            {
+            public void finish() {
                 pageBuilder.finish();
             }
 
             @Override
-            public void close()
-            {
+            public void close() {
                 pageBuilder.close();
             }
 
             @Override
-            public void add(Page page)
-            {
+            public void add(Page page) {
                 pageReader.setPage(page);
 
                 ObjectMapper mapper = new ObjectMapper();
 
                 ArrayNode schemaNode = mapper.createArrayNode();
                 if (task.getSampleDataMode()) {
-                    for (Column column : inputSchema.getColumns()) {
-                        ArrayNode eachSchemaNode = mapper.createArrayNode();
-                        eachSchemaNode.add(column.getName());
-                        eachSchemaNode.add(column.getType().getName());
-                        schemaNode.add(eachSchemaNode);
-                    }
+                    schemaNode = getSchemaNode();
                 }
 
                 ObjectNode requestRootNode = mapper.createObjectNode();
@@ -156,21 +156,16 @@ public class InternalHttpFilterPlugin
                         Type type = column.getType();
                         if (Types.STRING.equals(type)) {
                             requestPageNode.put(column.getName(), pageReader.getString(column));
-                        }
-                        else if (Types.DOUBLE.equals(type)) {
+                        } else if (Types.DOUBLE.equals(type)) {
                             requestPageNode.put(column.getName(), pageReader.getDouble(column));
-                        }
-                        else if (Types.LONG.equals(type)) {
+                        } else if (Types.LONG.equals(type)) {
                             requestPageNode.put(column.getName(), pageReader.getLong(column));
-                        }
-                        else if (Types.BOOLEAN.equals(type)) {
+                        } else if (Types.BOOLEAN.equals(type)) {
                             requestPageNode.put(column.getName(), pageReader.getBoolean(column));
-                        }
-                        else if (Types.TIMESTAMP.equals(type)) {
-                            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss xxxx").withZone(ZoneOffset.UTC);
+                        } else if (Types.TIMESTAMP.equals(type)) {
+                            DateTimeFormatter formatter = DateTimeFormatter.ofPattern(defaultJavaTimestampFormat).withZone(ZoneOffset.UTC);
                             requestPageNode.put(column.getName(), formatter.format(pageReader.getTimestamp(column).getInstant()));
-                        }
-                        else if (Types.JSON.equals(type)) {
+                        } else if (Types.JSON.equals(type)) {
                             try {
                                 requestPageNode.set(column.getName(), mapper.readTree(pageReader.getJson(column).toString()));
                             } catch (IOException e) {
@@ -181,18 +176,17 @@ public class InternalHttpFilterPlugin
                     }
                     if (task.getSampleDataMode()) {
                         try {
-                            pageBuilder.setJson(new Column(0, "data", Types.JSON), new JsonParser().parse(mapper.writeValueAsString(requestPageNode)));
-                            pageBuilder.setJson(new Column(1, "schema", Types.JSON), new JsonParser().parse(mapper.writeValueAsString(schemaNode)));
+                            pageBuilder.setJson(new Column(0, sampleDataModeColumnName0, Types.JSON), new JsonParser().parse(mapper.writeValueAsString(requestPageNode)));
+                            pageBuilder.setJson(new Column(1, sampleDataModeColumnName1, Types.JSON), new JsonParser().parse(mapper.writeValueAsString(schemaNode)));
                             pageBuilder.addRecord();
-                        }
-                        catch (IOException e) {
+                        } catch (IOException e) {
                             logger.error(e.getMessage(), e);
                             throw new ExecutionInterruptedException(e);
                         }
                     }
                     requestPagesNode.add(requestPageNode);
                 }
-                requestRootNode.set("rows", requestPagesNode);
+                requestRootNode.set(requestJsonRootAttributeName, requestPagesNode);
 
                 if (task.getSampleDataMode()) {
                     return;
@@ -208,7 +202,7 @@ public class InternalHttpFilterPlugin
                             if (httpResponse.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
                                 String responseBody = EntityUtils.toString(httpResponse.getEntity());
                                 JsonNode responseRootNode = mapper.readTree(responseBody);
-                                Iterator<JsonNode> responseRootIterator = responseRootNode.get("rows").elements();
+                                Iterator<JsonNode> responseRootIterator = responseRootNode.get(requestJsonRootAttributeName).elements();
                                 while (responseRootIterator.hasNext()) {
                                     JsonNode responsePageNode = responseRootIterator.next();
                                     if (responsePageNode.isNull()) {
@@ -224,27 +218,21 @@ public class InternalHttpFilterPlugin
                                         Type type = column.getType();
                                         if (Types.STRING.equals(type)) {
                                             pageBuilder.setString(column, val.asText());
-                                        }
-                                        else if (Types.DOUBLE.equals(type)) {
+                                        } else if (Types.DOUBLE.equals(type)) {
                                             pageBuilder.setDouble(column, val.asDouble());
-                                        }
-                                        else if (Types.LONG.equals(type)) {
+                                        } else if (Types.LONG.equals(type)) {
                                             pageBuilder.setLong(column, val.asLong());
-                                        }
-                                        else if (Types.BOOLEAN.equals(type)) {
+                                        } else if (Types.BOOLEAN.equals(type)) {
                                             pageBuilder.setBoolean(column, val.asBoolean());
-                                        }
-                                        else if (Types.TIMESTAMP.equals(type)) {
+                                        } else if (Types.TIMESTAMP.equals(type)) {
                                             pageBuilder.setTimestamp(column, timestampParserMap.get(column.getName()).parse(val.asText()));
-                                        }
-                                        else if (Types.JSON.equals(type)) {
+                                        } else if (Types.JSON.equals(type)) {
                                             pageBuilder.setJson(column, new JsonParser().parse(val.toString()));
                                         }
                                     }
                                     pageBuilder.addRecord();
                                 }
-                            }
-                            else {
+                            } else {
                                 logger.error("Internal API Error");
                                 String responseBody = EntityUtils.toString(httpResponse.getEntity());
                                 logger.error(responseBody);
@@ -252,11 +240,22 @@ public class InternalHttpFilterPlugin
                             }
                         }
                     }
-                }
-                catch (IOException e) {
+                } catch (IOException e) {
                     logger.error(e.getMessage(), e);
                     throw new ExecutionInterruptedException(e);
                 }
+            }
+
+            private ArrayNode getSchemaNode() {
+                ObjectMapper mapper = new ObjectMapper();
+                ArrayNode schemaNode = mapper.createArrayNode();
+                for (Column column : inputSchema.getColumns()) {
+                    ArrayNode eachSchemaNode = mapper.createArrayNode();
+                    eachSchemaNode.add(column.getName());
+                    eachSchemaNode.add(column.getType().getName());
+                    schemaNode.add(eachSchemaNode);
+                }
+                return schemaNode;
             }
         };
     }

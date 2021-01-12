@@ -13,19 +13,21 @@ configurations {
     provided
 }
 
-version = "0.1.7"
+version = "0.1.8"
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
 
 dependencies {
-    compile  "org.embulk:embulk-core:0.9.17"
-    provided "org.embulk:embulk-core:0.9.17"
+    compile  "org.embulk:embulk-core:0.9.12"
+    provided "org.embulk:embulk-core:0.9.12"
     // https://mvnrepository.com/artifact/org.apache.httpcomponents/httpclient
     compile group: 'org.apache.httpcomponents', name: 'httpclient', version: '4.5.12'
 
     // compile "YOUR_JAR_DEPENDENCY_GROUP:YOUR_JAR_DEPENDENCY_MODULE:YOUR_JAR_DEPENDENCY_VERSION"
     testCompile "junit:junit:4.+"
+    testCompile "org.mock-server:mockserver-junit-rule:5.11.2"
+    testCompile "org.embulk:embulk-core:0.9.12:tests"
 }
 
 task classpath(type: Copy, dependsOn: ["jar"]) {
