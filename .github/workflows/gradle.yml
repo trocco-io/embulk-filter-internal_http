@@ -35,5 +35,5 @@ jobs:
         mkdir -p $HOME/.gem
         touch $HOME/.gem/credentials
         chmod 0600 $HOME/.gem/credentials
-        printf -- "---\n:github: ${{secrets.GITHUB_TOKEN}}\n" > $HOME/.gem/credentials
+        printf -- "---\n:github: Bearer ${{secrets.GITHUB_TOKEN}}\n" > $HOME/.gem/credentials
         ./gradlew gemPush
