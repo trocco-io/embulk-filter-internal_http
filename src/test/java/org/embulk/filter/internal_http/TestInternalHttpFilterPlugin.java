@@ -244,7 +244,7 @@ public class TestInternalHttpFilterPlugin {
                 assertEquals(1, records.size());
 
                 Object[] record = records.get(0);
-                assertEquals(1L, record[0]);
+                assertEquals(2L, record[0]);
                 assertEquals(3.0, record[1]);
                 assertEquals(true, record[2]);
                 assertEquals("bar", record[3]);
