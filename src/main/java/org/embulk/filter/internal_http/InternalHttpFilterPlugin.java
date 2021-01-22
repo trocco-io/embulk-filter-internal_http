@@ -6,10 +6,12 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import org.apache.http.HttpStatus;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 import org.embulk.config.*;
@@ -37,6 +39,7 @@ public class InternalHttpFilterPlugin implements FilterPlugin {
     private static final String sampleDataModeColumnName0 = "data";
     private static final String sampleDataModeColumnName1 = "schema";
     private static final String requestJsonRootAttributeName = "rows";
+    private static final int httpRequestTimeoutSec = 60;
 
     private static HashMap<String, TimestampParser> timestampParserMap = new HashMap<>();
 
@@ -194,7 +197,11 @@ public class InternalHttpFilterPlugin implements FilterPlugin {
 
                 try {
                     String requestBody = mapper.writeValueAsString(requestRootNode);
-                    try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+                    // ref: https://stackoverflow.com/questions/31611861/why-setconnectionrequesttimeout-doesnt-stop-my-1-min-get-request
+                    RequestConfig config = RequestConfig.custom()
+                            .setSocketTimeout(httpRequestTimeoutSec * 1000)
+                            .build();
+                    try (CloseableHttpClient httpClient = HttpClientBuilder.create().setDefaultRequestConfig(config).build()) {
                         HttpPost httpPost = new HttpPost(task.getUrl());
                         StringEntity entity = new StringEntity(requestBody, "UTF-8");
                         httpPost.setEntity(entity);
