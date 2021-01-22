@@ -39,6 +39,7 @@ public class InternalHttpFilterPlugin implements FilterPlugin {
     private static final String sampleDataModeColumnName0 = "data";
     private static final String sampleDataModeColumnName1 = "schema";
     private static final String requestJsonRootAttributeName = "rows";
+    private static final int httpRequestTimeoutSec = 60;
 
     private static HashMap<String, TimestampParser> timestampParserMap = new HashMap<>();
 
@@ -198,7 +199,7 @@ public class InternalHttpFilterPlugin implements FilterPlugin {
                     String requestBody = mapper.writeValueAsString(requestRootNode);
                     // ref: https://stackoverflow.com/questions/31611861/why-setconnectionrequesttimeout-doesnt-stop-my-1-min-get-request
                     RequestConfig config = RequestConfig.custom()
-                            .setSocketTimeout(5000)
+                            .setSocketTimeout(httpRequestTimeoutSec * 1000)
                             .build();
                     try (CloseableHttpClient httpClient = HttpClientBuilder.create().setDefaultRequestConfig(config).build()) {
                         HttpPost httpPost = new HttpPost(task.getUrl());
