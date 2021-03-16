@@ -39,7 +39,8 @@ public class InternalHttpFilterPlugin implements FilterPlugin {
     private static final String sampleDataModeColumnName0 = "data";
     private static final String sampleDataModeColumnName1 = "schema";
     private static final String requestJsonRootAttributeName = "rows";
-    private static final int httpRequestTimeoutSec = 60;
+    // https://prime-number.slack.com/archives/C0147D37HJ8/p1615873302019400?thread_ts=1615859308.003200&cid=C0147D37HJ8
+    private static final int httpRequestTimeoutSec = 5 * 100 * 8;
 
     private static HashMap<String, TimestampParser> timestampParserMap = new HashMap<>();
 
