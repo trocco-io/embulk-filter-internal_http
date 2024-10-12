@@ -3,24 +3,22 @@ name: main
 on:
   push:
     branches:
-      - 'main'
+      - 'master'
     tags:
       - '*'
   pull_request:
     branches:
-      - 'main'
+      - 'master'
     types: [opened, synchronize]
   pull_request_target:
     branches:
-      - 'main'
+      - 'master'
     types: [labeled]
 
 jobs:
   test:
     name: test
     runs-on: ubuntu-latest
-    env:
-      BENCHMARK: "true"
     if: >
       ${{
         github.event_name == 'pull_request' ||
