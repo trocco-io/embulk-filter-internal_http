@@ -123,7 +123,8 @@ public class InternalHttpFilterPlugin implements FilterPlugin {
         }
     }
 
-    @SuppressWarnings("deprecation") // For the use of pageReader.getTimestamp, pageReader.getJson, pageBuilder.setJson and JsonParser
+    // For the use of org.embulk.spi.time.Timestamp, pageReader.getTimestamp, pageReader.getJson, pageBuilder.setJson and JsonParser
+    @SuppressWarnings("deprecation")
     @Override
     public PageOutput open(TaskSource taskSource, Schema inputSchema, Schema outputSchema, PageOutput output) {
         final TaskMapper taskMapper = CONFIG_MAPPER_FACTORY.createTaskMapper();
@@ -239,7 +240,7 @@ public class InternalHttpFilterPlugin implements FilterPlugin {
                                         } else if (Types.BOOLEAN.equals(type)) {
                                             pageBuilder.setBoolean(column, val.asBoolean());
                                         } else if (Types.TIMESTAMP.equals(type)) {
-                                            pageBuilder.setTimestamp(column, timestampFormatterMap.get(column.getName()).parse(val.asText()));
+                                            pageBuilder.setTimestamp(column, org.embulk.spi.time.Timestamp.ofInstant(timestampFormatterMap.get(column.getName()).parse(val.asText())));
                                         } else if (Types.JSON.equals(type)) {
                                             pageBuilder.setJson(column, new org.embulk.util.json.JsonParser().parse(val.toString()));
                                         }
