@@ -66,7 +66,7 @@ gem {
     from("LICENSE.txt")
     authors = ["naotaka nakane"]
     email = ["n.nakane0219@gmail.com"]
-    summary = "Formats JSONL files for other file output plugins."
+    summary = "Internal Http filter plugin for Embulk"
     homepage = "https://github.com/n.nakane0219/embulk-filter-internal_http"
     licenses = [ "MIT" ]
 }
