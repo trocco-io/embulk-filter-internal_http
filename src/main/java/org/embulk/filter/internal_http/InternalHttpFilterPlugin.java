@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableList;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -12,21 +11,20 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 import org.embulk.config.*;
-import org.embulk.exec.ExecutionInterruptedException;
 import org.embulk.spi.*;
-import org.embulk.spi.json.JsonParser;
-import org.embulk.spi.time.TimestampParser;
 import org.embulk.spi.type.Type;
 import org.embulk.spi.type.Types;
+import org.embulk.util.config.*;
+import org.embulk.util.timestamp.TimestampFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -42,7 +40,11 @@ public class InternalHttpFilterPlugin implements FilterPlugin {
     // https://prime-number.slack.com/archives/C0147D37HJ8/p1615873302019400?thread_ts=1615859308.003200&cid=C0147D37HJ8
     private static final int httpRequestTimeoutSec = 5 * 100 * 8;
 
-    private static HashMap<String, TimestampParser> timestampParserMap = new HashMap<>();
+    private static HashMap<String, TimestampFormatter> timestampFormatterMap = new HashMap<>();
+
+    protected static final ConfigMapperFactory CONFIG_MAPPER_FACTORY =
+            ConfigMapperFactory.builder().addDefaultModules().build();
+    protected static final ConfigMapper CONFIG_MAPPER = CONFIG_MAPPER_FACTORY.createConfigMapper();
 
     // NOTE: This is not spi.ColumnConfig
     public interface ColumnConfig extends Task {
@@ -72,8 +74,9 @@ public class InternalHttpFilterPlugin implements FilterPlugin {
     }
 
     @Override
+    @SuppressWarnings("deprecation") // For the use of task#dump().
     public void transaction(ConfigSource config, Schema inputSchema, FilterPlugin.Control control) {
-        PluginTask task = config.loadConfig(PluginTask.class);
+        PluginTask task = CONFIG_MAPPER.map(config, PluginTask.class);
 
         validateConfig(task);
         Schema outputSchema = task.getSampleDataMode() ? buildSampleDataOutputSchema() : buildDefaultOutputSchema(task);
@@ -95,33 +98,37 @@ public class InternalHttpFilterPlugin implements FilterPlugin {
 
     private Schema buildDefaultOutputSchema(PluginTask task) {
         List<ColumnConfig> columns = task.getColumns();
-        ImmutableList.Builder<Column> builder = ImmutableList.builder();
+        List<Column> schemaColumns = new ArrayList<>();
         int i = 0;
         for (ColumnConfig column : columns) {
-            builder.add(new Column(i++, column.getName(), column.getType()));
+            schemaColumns.add(new Column(i++, column.getName(), column.getType()));
         }
-        return new Schema(builder.build());
+        return new Schema(schemaColumns);
     }
 
     private Schema buildSampleDataOutputSchema() {
-        ImmutableList.Builder<Column> builder = ImmutableList.builder();
-        builder.add(new Column(0, sampleDataModeColumnName0, Types.JSON));
-        builder.add(new Column(1, sampleDataModeColumnName1, Types.JSON));
-        return new Schema(builder.build());
+        List<Column> schemaColumns = new ArrayList<>();
+        schemaColumns.add(new Column(0, sampleDataModeColumnName0, Types.JSON));
+        schemaColumns.add(new Column(1, sampleDataModeColumnName1, Types.JSON));
+        return new Schema(schemaColumns);
     }
 
     private void initTimestampParserMap(PluginTask task) {
         List<ColumnConfig> columns = task.getColumns();
         for (ColumnConfig column : columns) {
             if (column.getType().getName().equals("timestamp")) {
-                timestampParserMap.put(column.getName(), TimestampParser.of(column.getFormat(), "UTC"));
+                TimestampFormatter formatter = TimestampFormatter.builder(column.getFormat(), true).setDefaultZoneFromString("UTC").build();
+                timestampFormatterMap.put(column.getName(), formatter);
             }
         }
     }
 
+    // For the use of org.embulk.spi.time.Timestamp, pageReader.getTimestamp, pageReader.getJson, pageBuilder.setJson and JsonParser
+    @SuppressWarnings("deprecation")
     @Override
     public PageOutput open(TaskSource taskSource, Schema inputSchema, Schema outputSchema, PageOutput output) {
-        PluginTask task = taskSource.loadTask(PluginTask.class);
+        final TaskMapper taskMapper = CONFIG_MAPPER_FACTORY.createTaskMapper();
+        final PluginTask task = taskMapper.map(taskSource, PluginTask.class);
 
         return new PageOutput() {
             private PageReader pageReader = new PageReader(inputSchema);
@@ -180,8 +187,8 @@ public class InternalHttpFilterPlugin implements FilterPlugin {
                     }
                     if (task.getSampleDataMode()) {
                         try {
-                            pageBuilder.setJson(new Column(0, sampleDataModeColumnName0, Types.JSON), new JsonParser().parse(mapper.writeValueAsString(requestPageNode)));
-                            pageBuilder.setJson(new Column(1, sampleDataModeColumnName1, Types.JSON), new JsonParser().parse(mapper.writeValueAsString(schemaNode)));
+                            pageBuilder.setJson(new Column(0, sampleDataModeColumnName0, Types.JSON), new org.embulk.util.json.JsonParser().parse(mapper.writeValueAsString(requestPageNode)));
+                            pageBuilder.setJson(new Column(1, sampleDataModeColumnName1, Types.JSON), new org.embulk.util.json.JsonParser().parse(mapper.writeValueAsString(schemaNode)));
                             pageBuilder.addRecord();
                         } catch (IOException e) {
                             logger.error(e.getMessage(), e);
@@ -233,9 +240,9 @@ public class InternalHttpFilterPlugin implements FilterPlugin {
                                         } else if (Types.BOOLEAN.equals(type)) {
                                             pageBuilder.setBoolean(column, val.asBoolean());
                                         } else if (Types.TIMESTAMP.equals(type)) {
-                                            pageBuilder.setTimestamp(column, timestampParserMap.get(column.getName()).parse(val.asText()));
+                                            pageBuilder.setTimestamp(column, org.embulk.spi.time.Timestamp.ofInstant(timestampFormatterMap.get(column.getName()).parse(val.asText())));
                                         } else if (Types.JSON.equals(type)) {
-                                            pageBuilder.setJson(column, new JsonParser().parse(val.toString()));
+                                            pageBuilder.setJson(column, new org.embulk.util.json.JsonParser().parse(val.toString()));
                                         }
                                     }
                                     pageBuilder.addRecord();
@@ -266,5 +273,11 @@ public class InternalHttpFilterPlugin implements FilterPlugin {
                 return schemaNode;
             }
         };
+    }
+
+    private static class ExecutionInterruptedException extends RuntimeException {
+        ExecutionInterruptedException(Exception e) {
+            super(e);
+        }
     }
 }
