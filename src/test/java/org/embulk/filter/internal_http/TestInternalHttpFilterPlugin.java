@@ -1,6 +1,12 @@
 package org.embulk.filter.internal_http;
 
+import static org.embulk.filter.internal_http.InternalHttpFilterPlugin.Control;
+import static org.embulk.spi.type.Types.*;
+import static org.junit.Assert.*;
+import static org.msgpack.value.ValueFactory.*;
+
 import com.google.common.collect.Lists;
+import java.util.List;
 import org.embulk.EmbulkTestRuntime;
 import org.embulk.config.*;
 import org.embulk.filter.internal_http.InternalHttpFilterPlugin.PluginTask;
@@ -16,14 +22,6 @@ import org.mockserver.junit.MockServerRule;
 import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
 import org.msgpack.value.Value;
-
-import java.time.Instant;
-import java.util.List;
-
-import static org.embulk.filter.internal_http.InternalHttpFilterPlugin.Control;
-import static org.embulk.spi.type.Types.*;
-import static org.junit.Assert.*;
-import static org.msgpack.value.ValueFactory.*;
 
 
 public class TestInternalHttpFilterPlugin {
