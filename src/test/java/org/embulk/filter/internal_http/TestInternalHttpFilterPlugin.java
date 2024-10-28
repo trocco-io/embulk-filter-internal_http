@@ -1,16 +1,19 @@
 package org.embulk.filter.internal_http;
 
+import static org.embulk.filter.internal_http.InternalHttpFilterPlugin.Control;
+import static org.embulk.spi.type.Types.*;
+import static org.junit.Assert.*;
+import static org.msgpack.value.ValueFactory.*;
+
 import com.google.common.collect.Lists;
+import java.util.List;
 import org.embulk.EmbulkTestRuntime;
-import org.embulk.config.ConfigException;
-import org.embulk.config.ConfigLoader;
-import org.embulk.config.ConfigSource;
-import org.embulk.config.TaskSource;
+import org.embulk.config.*;
 import org.embulk.filter.internal_http.InternalHttpFilterPlugin.PluginTask;
 import org.embulk.spi.*;
 import org.embulk.spi.TestPageBuilderReader.MockPageOutput;
-import org.embulk.spi.time.Timestamp;
-import org.embulk.spi.util.Pages;
+import org.embulk.util.config.ConfigMapper;
+import org.embulk.util.config.ConfigMapperFactory;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -20,14 +23,13 @@ import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
 import org.msgpack.value.Value;
 
-import java.util.List;
-
-import static org.embulk.filter.internal_http.InternalHttpFilterPlugin.Control;
-import static org.embulk.spi.type.Types.*;
-import static org.junit.Assert.*;
-import static org.msgpack.value.ValueFactory.*;
 
 public class TestInternalHttpFilterPlugin {
+    protected static final ConfigMapperFactory CONFIG_MAPPER_FACTORY =
+            ConfigMapperFactory.builder().addDefaultModules().build();
+
+    protected static final ConfigMapper CONFIG_MAPPER = CONFIG_MAPPER_FACTORY.createConfigMapper();
+
     @Rule
     public EmbulkTestRuntime runtime = new EmbulkTestRuntime();
 
@@ -41,6 +43,7 @@ public class TestInternalHttpFilterPlugin {
         internalHttpFilterPlugin = new InternalHttpFilterPlugin();
     }
 
+    @SuppressWarnings("deprecation") // For the use of org.embulk.config.ModelManager().
     private ConfigSource configFromYamlString(String... lines) {
         StringBuilder builder = new StringBuilder();
         for (String line : lines) {
@@ -48,13 +51,13 @@ public class TestInternalHttpFilterPlugin {
         }
         String yamlString = builder.toString();
 
-        ConfigLoader loader = new ConfigLoader(Exec.getModelManager());
+        ConfigLoader loader = new ConfigLoader(new org.embulk.config.ModelManager());
         return loader.fromYamlString(yamlString);
     }
 
     private PluginTask taskFromYamlString(String... lines) {
         ConfigSource config = configFromYamlString(lines);
-        return config.loadConfig(PluginTask.class);
+        return CONFIG_MAPPER.map(config, PluginTask.class);
     }
 
     private Schema schema(Column... columns) {
@@ -133,6 +136,7 @@ public class TestInternalHttpFilterPlugin {
     }
 
     // Filter tests
+    @SuppressWarnings("deprecation") // For the use of org.embulk.spi.time.Timestamp and org.embulk.spi.util.Pages.
     @Test
     public void testSampleDataModeOutput() {
         ConfigSource config = configFromYamlString(
@@ -157,14 +161,14 @@ public class TestInternalHttpFilterPlugin {
                             2.0,
                             false,
                             "foo",
-                            Timestamp.ofEpochSecond(4),
+                            org.embulk.spi.time.Timestamp.ofEpochSecond(4),
                             newMapBuilder().put(newString("foo"), newString("bar")).build()
                     )) {
                         pageOutput.add(page);
                     }
                     pageOutput.finish();
                 }
-                List<Object[]> records = Pages.toObjects(outputSchema, mockPageOutput.pages);
+                List<Object[]> records = org.embulk.spi.util.Pages.toObjects(outputSchema, mockPageOutput.pages);
                 assertEquals(1, records.size());
 
                 Object[] record = records.get(0);
@@ -190,6 +194,7 @@ public class TestInternalHttpFilterPlugin {
         });
     }
 
+    @SuppressWarnings("deprecation") // For the use of org.embulk.spi.time.Timestamp and org.embulk.spi.util.Pages.
     @Test
     public void testNonSampleModeOutput() {
         new MockServerClient("localhost", 18888)
@@ -233,14 +238,14 @@ public class TestInternalHttpFilterPlugin {
                             2.0,
                             false,
                             "foo",
-                            Timestamp.ofEpochSecond(4),
+                            org.embulk.spi.time.Timestamp.ofEpochSecond(4),
                             newMapBuilder().put(newString("foo"), newString("bar")).build()
                     )) {
                         pageOutput.add(page);
                     }
                     pageOutput.finish();
                 }
-                List<Object[]> records = Pages.toObjects(outputSchema, mockPageOutput.pages);
+                List<Object[]> records = org.embulk.spi.util.Pages.toObjects(outputSchema, mockPageOutput.pages);
                 assertEquals(1, records.size());
 
                 Object[] record = records.get(0);
@@ -248,12 +253,13 @@ public class TestInternalHttpFilterPlugin {
                 assertEquals(3.0, record[1]);
                 assertEquals(true, record[2]);
                 assertEquals("bar", record[3]);
-                assertEquals(Timestamp.ofEpochSecond(5), record[4]);
+                assertEquals(org.embulk.spi.time.Timestamp.ofEpochSecond(5), record[4]);
                 assertEquals(newMapBuilder().put(newString("bar"), newString("baz")).build(), record[5]);
             }
         });
     }
 
+    @SuppressWarnings("deprecation") // For the use of org.embulk.spi.util.Pages.
     @Test
     public void testNonSampleModeWithNullRowOutput() {
         new MockServerClient("localhost", 18888)
@@ -289,12 +295,13 @@ public class TestInternalHttpFilterPlugin {
                     }
                     pageOutput.finish();
                 }
-                List<Object[]> records = Pages.toObjects(outputSchema, mockPageOutput.pages);
+                List<Object[]> records = org.embulk.spi.util.Pages.toObjects(outputSchema, mockPageOutput.pages);
                 assertEquals(0, records.size());
             }
         });
     }
 
+    @SuppressWarnings("deprecation") // For the use of org.embulk.spi.time.Timestamp and org.embulk.spi.util.Pages.
     @Test
     public void testNonSampleModeWithNullFieldsOutput() {
         new MockServerClient("localhost", 18888)
@@ -338,14 +345,14 @@ public class TestInternalHttpFilterPlugin {
                             2.0,
                             false,
                             "foo",
-                            Timestamp.ofEpochSecond(4),
+                            org.embulk.spi.time.Timestamp.ofEpochSecond(4),
                             newMapBuilder().put(newString("foo"), newString("bar")).build()
                     )) {
                         pageOutput.add(page);
                     }
                     pageOutput.finish();
                 }
-                List<Object[]> records = Pages.toObjects(outputSchema, mockPageOutput.pages);
+                List<Object[]> records = org.embulk.spi.util.Pages.toObjects(outputSchema, mockPageOutput.pages);
                 assertEquals(1, records.size());
 
                 Object[] record = records.get(0);
@@ -359,6 +366,7 @@ public class TestInternalHttpFilterPlugin {
         });
     }
 
+    @SuppressWarnings("deprecation") // For the use of org.embulk.spi.time.Timestamp and org.embulk.spi.util.Pages.
     @Test
     public void testNonSampleModeWithNonDefaultFormatTsOutput() {
         new MockServerClient("localhost", 18888)
@@ -388,17 +396,17 @@ public class TestInternalHttpFilterPlugin {
                 MockPageOutput mockPageOutput = new MockPageOutput();
                 try (PageOutput pageOutput = internalHttpFilterPlugin.open(taskSource, inputSchema, outputSchema, mockPageOutput)) {
                     for (Page page : PageTestUtils.buildPage(runtime.getBufferAllocator(), inputSchema,
-                            Timestamp.ofEpochSecond(4)
+                            org.embulk.spi.time.Timestamp.ofEpochSecond(4)
                     )) {
                         pageOutput.add(page);
                     }
                     pageOutput.finish();
                 }
-                List<Object[]> records = Pages.toObjects(outputSchema, mockPageOutput.pages);
+                List<Object[]> records = org.embulk.spi.util.Pages.toObjects(outputSchema, mockPageOutput.pages);
                 assertEquals(1, records.size());
 
                 Object[] record = records.get(0);
-                assertEquals(Timestamp.ofEpochSecond(4), record[0]);
+                assertEquals(org.embulk.spi.time.Timestamp.ofEpochSecond(4), record[0]);
             }
         });
     }
