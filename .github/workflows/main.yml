@@ -19,6 +19,9 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-latest
+    # pull_request_target runs PR code with a token for the base repository, so keep it read-only.
+    permissions:
+      contents: read
     if: >
       ${{
         github.event_name == 'pull_request' ||
@@ -26,11 +29,16 @@ jobs:
         startsWith(github.ref, 'refs/tags/')
       }}
     steps:
-      - uses: actions/checkout@v2
-      - name: Set up JDK 1.8
-        uses: actions/setup-java@v1
+      - uses: actions/checkout@v4
         with:
-          java-version: 1.8
+          # pull_request_target checks out the base branch by default; test the PR head instead.
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || '' }}
+          persist-credentials: false
+      - name: Set up JDK 1.8
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'corretto'
+          java-version: '8'
       - name: lint
         run: ./gradlew spotlessCheck
       - name: Test
@@ -44,7 +52,13 @@ jobs:
     needs: [ test ]
     if: ${{ github.event_name == 'workflow_dispatch' || contains(github.ref, 'refs/tags/') }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+      # push-gem-to-gpr-action runs ./gradlew itself; Gradle 6.9 cannot run on the runner's default JDK.
+      - name: Set up JDK 1.8
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'corretto'
+          java-version: '8'
       - name: Set up Ruby 2.7
         uses: ruby/setup-ruby@v1
         with:
