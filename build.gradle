@@ -68,7 +68,7 @@ gem {
     authors = ["naotaka nakane"]
     email = ["n.nakane0219@gmail.com"]
     summary = "Internal Http filter plugin for Embulk"
-    homepage = "https://github.com/n.nakane0219/embulk-filter-internal_http"
+    homepage = "https://github.com/trocco-io/embulk-filter-internal_http"
     licenses = [ "MIT" ]
 }
 
