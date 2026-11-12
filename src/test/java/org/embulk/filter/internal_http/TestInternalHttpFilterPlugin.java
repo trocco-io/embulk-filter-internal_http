@@ -389,6 +389,14 @@ public class TestInternalHttpFilterPlugin {
         assertTimestampColumnParsed("%Y/%m/%d %H%M%S", 9, "1970/01/01 000009");
     }
 
+    @Test
+    public void testNonSampleModeWithFormatTsWithoutDateOutput() {
+        // Missing date fields default to 1970-01-01, as with the previous TimestampParser.
+        assertTimestampColumnParsed("%H:%M:%S", 1, "00:00:01");
+        assertTimestampColumnParsed("%m/%d %H:%M:%S", 2, "01/01 00:00:02");
+        assertTimestampColumnParsed("%Y %H:%M:%S", 3, "1970 00:00:03");
+    }
+
     @SuppressWarnings("deprecation") // For the use of org.embulk.spi.time.Timestamp and org.embulk.spi.util.Pages.
     private void assertTimestampColumnParsed(String format, long epochSecond, String responseValue) {
         new MockServerClient("localhost", 18888)

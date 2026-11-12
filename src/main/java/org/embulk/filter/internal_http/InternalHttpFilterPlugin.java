@@ -117,8 +117,13 @@ public class InternalHttpFilterPlugin implements FilterPlugin {
         List<ColumnConfig> columns = task.getColumns();
         for (ColumnConfig column : columns) {
             if (column.getType().getName().equals("timestamp")) {
+                // Keep the defaults of the previous TimestampParser.of(pattern, "UTC"): UTC and 1970-01-01.
                 // setDefaultZoneFromString("UTC") throws for "java:"/"ruby:" prefixed patterns, which only accept offsets.
-                TimestampFormatter formatter = TimestampFormatter.builder(column.getFormat(), true).setDefaultZoneOffset(ZoneOffset.UTC).build();
+                // Without setDefaultDate the builder's default date is 0000-00-00, so patterns lacking a date field fail.
+                TimestampFormatter formatter = TimestampFormatter.builder(column.getFormat(), true)
+                        .setDefaultZoneOffset(ZoneOffset.UTC)
+                        .setDefaultDate(1970, 1, 1)
+                        .build();
                 timestampFormatterMap.put(column.getName(), formatter);
             }
         }
