@@ -117,7 +117,8 @@ public class InternalHttpFilterPlugin implements FilterPlugin {
         List<ColumnConfig> columns = task.getColumns();
         for (ColumnConfig column : columns) {
             if (column.getType().getName().equals("timestamp")) {
-                TimestampFormatter formatter = TimestampFormatter.builder(column.getFormat(), true).setDefaultZoneFromString("UTC").build();
+                // setDefaultZoneFromString("UTC") throws for "java:"/"ruby:" prefixed patterns, which only accept offsets.
+                TimestampFormatter formatter = TimestampFormatter.builder(column.getFormat(), true).setDefaultZoneOffset(ZoneOffset.UTC).build();
                 timestampFormatterMap.put(column.getName(), formatter);
             }
         }

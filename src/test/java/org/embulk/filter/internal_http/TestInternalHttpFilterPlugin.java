@@ -366,26 +366,48 @@ public class TestInternalHttpFilterPlugin {
         });
     }
 
-    @SuppressWarnings("deprecation") // For the use of org.embulk.spi.time.Timestamp and org.embulk.spi.util.Pages.
     @Test
     public void testNonSampleModeWithNonDefaultFormatTsOutput() {
+        assertTimestampColumnParsed("%Y/%m/%d %H%M%S %z", 4, "1970/01/01 000004 +0000");
+    }
+
+    @Test
+    public void testNonSampleModeWithJavaPrefixedFormatTsOutput() {
+        assertTimestampColumnParsed("java:yyyy/MM/dd HHmmss Z", 5, "1970/01/01 000005 +0000");
+    }
+
+    @Test
+    public void testNonSampleModeWithRubyPrefixedFormatTsOutput() {
+        assertTimestampColumnParsed("ruby:%Y/%m/%d %H%M%S %z", 6, "1970/01/01 000006 +0000");
+    }
+
+    @Test
+    public void testNonSampleModeWithPrefixedFormatTsWithoutZoneOutput() {
+        // The default zone is UTC for every pattern style.
+        assertTimestampColumnParsed("java:yyyy/MM/dd HHmmss", 7, "1970/01/01 000007");
+        assertTimestampColumnParsed("ruby:%Y/%m/%d %H%M%S", 8, "1970/01/01 000008");
+        assertTimestampColumnParsed("%Y/%m/%d %H%M%S", 9, "1970/01/01 000009");
+    }
+
+    @SuppressWarnings("deprecation") // For the use of org.embulk.spi.time.Timestamp and org.embulk.spi.util.Pages.
+    private void assertTimestampColumnParsed(String format, long epochSecond, String responseValue) {
         new MockServerClient("localhost", 18888)
                 .when(
                         HttpRequest.request()
                                 .withMethod("POST")
                                 .withPath("/")
-                                .withBody("{\"rows\":[{\"timestamp_col\":\"1970-01-01 00:00:04 +0000\"}]}")
+                                .withBody("{\"rows\":[{\"timestamp_col\":\"1970-01-01 00:00:0" + epochSecond + " +0000\"}]}")
                 )
                 .respond(
                         HttpResponse.response()
                                 .withStatusCode(200)
-                                .withBody("{\"rows\":[{\"timestamp_col\":\"1970/01/01 000004 +0000\"}]}")
+                                .withBody("{\"rows\":[{\"timestamp_col\":\"" + responseValue + "\"}]}")
                 );
         ConfigSource config = configFromYamlString(
                 "type: internal_http",
                 "url: http://localhost:18888",
                 "columns:",
-                "  - {name: timestamp_col, type: timestamp, format: \"%Y/%m/%d %H%M%S %z\"}"
+                "  - {name: timestamp_col, type: timestamp, format: \"" + format + "\"}"
         );
         final Schema inputSchema = schema(
                 new Column(0, "timestamp_col", TIMESTAMP)
@@ -396,7 +418,7 @@ public class TestInternalHttpFilterPlugin {
                 MockPageOutput mockPageOutput = new MockPageOutput();
                 try (PageOutput pageOutput = internalHttpFilterPlugin.open(taskSource, inputSchema, outputSchema, mockPageOutput)) {
                     for (Page page : PageTestUtils.buildPage(runtime.getBufferAllocator(), inputSchema,
-                            org.embulk.spi.time.Timestamp.ofEpochSecond(4)
+                            org.embulk.spi.time.Timestamp.ofEpochSecond(epochSecond)
                     )) {
                         pageOutput.add(page);
                     }
@@ -406,7 +428,7 @@ public class TestInternalHttpFilterPlugin {
                 assertEquals(1, records.size());
 
                 Object[] record = records.get(0);
-                assertEquals(org.embulk.spi.time.Timestamp.ofEpochSecond(4), record[0]);
+                assertEquals(org.embulk.spi.time.Timestamp.ofEpochSecond(epochSecond), record[0]);
             }
         });
     }
